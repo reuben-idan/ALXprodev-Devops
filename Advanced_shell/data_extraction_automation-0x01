@@ -10,35 +10,15 @@ if [ ! -f "data.json" ]; then
     exit 1
 fi
 
-# Extract data using jq and process with awk and sed
-# Get name, height, weight, and type (first type only)
-jq -r '.name, .height, .weight, .types[0].type.name' data.json | \
-sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-awk '
-BEGIN {
-    name = ""
-    height = ""
-    weight = ""
-    type = ""
-    count = 0
-}
-{
-    count++
-    if (count == 1) name = $0
-    else if (count == 2) height = $0
-    else if (count == 3) weight = $0
-    else if (count == 4) type = $0
-}
-END {
-    # Convert height from decimeters to meters
-    height_m = height / 10
-    # Convert weight from hectograms to kilograms
-    weight_kg = weight / 10
-    
-    # Capitalize first letter of name
-    name = toupper(substr(name, 1, 1)) substr(name, 2)
-    # Capitalize first letter of type
-    type = toupper(substr(type, 1, 1)) substr(type, 2)
-    
-    printf "%s is of type %s, weighs %.0fkg, and is %.1fm tall.\n", name, type, weight_kg, height_m
-}' 
+# Extract values using jq
+name=$(jq -r '.name' data.json | sed 's/.*/\u&/')
+height=$(jq -r '.height' data.json)
+weight=$(jq -r '.weight' data.json)
+type=$(jq -r '.types[0].type.name' data.json | sed 's/.*/\u&/')
+
+# Convert height (decimeters to meters) and weight (hectograms to kg) using awk
+formatted_height=$(echo "$height" | awk '{printf "%.1f", $1/10}')
+formatted_weight=$(echo "$weight" | awk '{printf "%.0f", $1/10}')
+
+# Output in the required format
+echo "$name is of type $type, weighs ${formatted_weight}kg, and is ${formatted_height}m tall." 
