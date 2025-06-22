@@ -2,23 +2,48 @@
 
 # Batch Pokémon Data Retrieval Script
 # Fetches data for multiple Pokémon and saves to separate files
+# Includes robust error handling and retry logic
 
 POKEMON_LIST=(bulbasaur ivysaur venusaur charmander charmeleon)
 API_URL="https://pokeapi.co/api/v2/pokemon"
 DATA_DIR="pokemon_data"
 DELAY=2 # seconds between requests
+MAX_RETRIES=3
+ERROR_LOG="pokemon_errors.log"
 
 # Create the data directory if it doesn't exist
 mkdir -p "$DATA_DIR"
 
+# Initialize error log
+echo "Pokémon API Error Log - $(date)" > "$ERROR_LOG"
+
 for name in "${POKEMON_LIST[@]}"; do
     echo "Fetching data for $name..."
     OUTFILE="$DATA_DIR/$name.json"
-    if curl -s -f "$API_URL/$name" -o "$OUTFILE"; then
-        echo "Saved data to $OUTFILE ✅"
-    else
-        echo "Failed to fetch data for $name ❌"
-    fi
+    
+    # Retry logic
+    retry_count=0
+    success=false
+    
+    while [ $retry_count -lt $MAX_RETRIES ] && [ "$success" = false ]; do
+        if curl -s -f "$API_URL/$name" -o "$OUTFILE" 2>/dev/null; then
+            echo "Saved data to $OUTFILE ✅"
+            success=true
+        else
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $MAX_RETRIES ]; then
+                echo "Attempt $retry_count failed for $name, retrying in $DELAY seconds..."
+                sleep $DELAY
+            else
+                echo "Failed to fetch data for $name after $MAX_RETRIES attempts ❌"
+                echo "$(date): Failed to fetch $name after $MAX_RETRIES attempts" >> "$ERROR_LOG"
+            fi
+        fi
+    done
+    
+    # Add delay between different Pokémon requests
     sleep $DELAY
+done
 
-done 
+echo ""
+echo "Batch processing completed. Check $ERROR_LOG for any errors." 
