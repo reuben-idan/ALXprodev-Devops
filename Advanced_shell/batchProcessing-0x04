@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# Parallel Pokémon Data Retrieval Script
+# Fetches data for multiple Pokémon in parallel using background processes
+
+POKEMON_LIST=(bulbasaur ivysaur venusaur charmander charmeleon)
+API_URL="https://pokeapi.co/api/v2/pokemon"
+DATA_DIR="pokemon_data"
+MAX_CONCURRENT=3 # Maximum number of parallel processes
+ERROR_LOG="pokemon_parallel_errors.log"
+
+# Create the data directory if it doesn't exist
+mkdir -p "$DATA_DIR"
+
+# Initialize error log
+echo "Parallel Pokémon API Error Log - $(date)" > "$ERROR_LOG"
+
+# Function to fetch a single Pokémon
+fetch_pokemon() {
+    local name=$1
+    local outfile="$DATA_DIR/$name.json"
+    
+    echo "Starting fetch for $name..."
+    
+    if curl -s -f "$API_URL/$name" -o "$outfile" 2>/dev/null; then
+        echo "✅ Successfully fetched $name"
+        return 0
+    else
+        echo "❌ Failed to fetch $name"
+        echo "$(date): Failed to fetch $name" >> "$ERROR_LOG"
+        return 1
+    fi
+}
+
+# Function to manage parallel processes
+fetch_parallel() {
+    local pids=()
+    local count=0
+    
+    for name in "${POKEMON_LIST[@]}"; do
+        # Start background process
+        fetch_pokemon "$name" &
+        pids+=($!)
+        count=$((count + 1))
+        
+        echo "Launched background process for $name (PID: ${pids[-1]})"
+        
+        # Limit concurrent processes
+        if [ $count -ge $MAX_CONCURRENT ]; then
+            echo "Waiting for processes to complete..."
+            for pid in "${pids[@]}"; do
+                wait $pid
+                echo "Process $pid completed"
+            done
+            pids=()
+            count=0
+        fi
+    done
+    
+    # Wait for remaining processes
+    if [ ${#pids[@]} -gt 0 ]; then
+        echo "Waiting for remaining processes to complete..."
+        for pid in "${pids[@]}"; do
+            wait $pid
+            echo "Process $pid completed"
+        done
+    fi
+}
+
+echo "Starting parallel Pokémon data fetch..."
+echo "Maximum concurrent processes: $MAX_CONCURRENT"
+echo ""
+
+# Execute parallel fetching
+fetch_parallel
+
+echo ""
+echo "All parallel processes completed!"
+echo "Check $ERROR_LOG for any errors."
+echo "Data files saved in $DATA_DIR/" 
