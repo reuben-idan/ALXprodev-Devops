@@ -2,6 +2,7 @@
 
 # Parallel Pokémon Data Retrieval Script
 # Fetches data for multiple Pokémon in parallel using background processes
+# Uses 'jobs' and 'kill' for process management
 
 POKEMON_LIST=(bulbasaur ivysaur venusaur charmander charmeleon)
 API_URL="https://pokeapi.co/api/v2/pokemon"
@@ -32,43 +33,49 @@ fetch_pokemon() {
     fi
 }
 
-# Function to manage parallel processes
+# Function to manage parallel processes using jobs
 fetch_parallel() {
-    local pids=()
-    local count=0
+    local job_count=0
     
     for name in "${POKEMON_LIST[@]}"; do
-        # Start background process
+        # Check current number of background jobs
+        job_count=$(jobs -r | wc -l)
+        
+        # Wait if we've reached the maximum concurrent jobs
+        while [ $job_count -ge $MAX_CONCURRENT ]; do
+            echo "Maximum concurrent jobs reached ($MAX_CONCURRENT). Waiting..."
+            sleep 1
+            job_count=$(jobs -r | wc -l)
+        done
+        
+        # Start background job
         fetch_pokemon "$name" &
-        pids+=($!)
-        count=$((count + 1))
-        
-        echo "Launched background process for $name (PID: ${pids[-1]})"
-        
-        # Limit concurrent processes
-        if [ $count -ge $MAX_CONCURRENT ]; then
-            echo "Waiting for processes to complete..."
-            for pid in "${pids[@]}"; do
-                wait $pid
-                echo "Process $pid completed"
-            done
-            pids=()
-            count=0
-        fi
+        echo "Launched background job for $name (Job ID: $!)"
+        echo "Current background jobs:"
+        jobs
     done
     
-    # Wait for remaining processes
-    if [ ${#pids[@]} -gt 0 ]; then
-        echo "Waiting for remaining processes to complete..."
-        for pid in "${pids[@]}"; do
-            wait $pid
-            echo "Process $pid completed"
-        done
-    fi
+    # Wait for all background jobs to complete
+    echo "Waiting for all background jobs to complete..."
+    wait
+    
+    echo "All background jobs completed!"
+    echo "Final job status:"
+    jobs
 }
 
+# Cleanup function to kill any remaining background jobs
+cleanup() {
+    echo "Cleaning up any remaining background jobs..."
+    jobs -p | xargs -r kill
+    echo "Cleanup completed."
+}
+
+# Set up trap to cleanup on script exit
+trap cleanup EXIT
+
 echo "Starting parallel Pokémon data fetch..."
-echo "Maximum concurrent processes: $MAX_CONCURRENT"
+echo "Maximum concurrent jobs: $MAX_CONCURRENT"
 echo ""
 
 # Execute parallel fetching
